@@ -1,0 +1,69 @@
+#!/bin/bash
+# brew arthas-update [--check]
+#
+# Bump chenqinghe/tap/arthas to the newest upstream release (alibaba/arthas
+# GitHub releases) and upgrade the installed keg.
+#   --check   only report whether a newer release exists
+set -euo pipefail
+
+TAP_DIR="$(brew --repository chenqinghe/tap)"
+FORMULA_FILE="${TAP_DIR}/Formula/arthas.rb"
+FORMULA="chenqinghe/tap/arthas"
+REPO="alibaba/arthas"
+
+check_only=false
+[[ "${1:-}" == "--check" ]] && check_only=true
+
+current="$(sed -n 's/^  version "\(.*\)"$/\1/p' "${FORMULA_FILE}")"
+latest="$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" \
+  | sed -n 's/.*"tag_name": *"arthas-all-\([0-9][0-9.]*\)".*/\1/p' | head -1)"
+
+if [[ -z "${latest}" ]]; then
+  echo "Error: could not determine the latest arthas release from GitHub." >&2
+  exit 1
+fi
+
+echo "formula:  ${current}"
+echo "upstream: ${latest}"
+
+if [[ "${current}" == "${latest}" ]]; then
+  echo "==> arthas is already at the newest upstream release."
+  exit 0
+fi
+
+if [[ "${check_only}" == true ]]; then
+  echo "==> Newer release available. Run 'brew arthas-update' to install it."
+  exit 0
+fi
+
+if [[ -n "$(git -C "${TAP_DIR}" status --porcelain -- Formula)" ]]; then
+  echo "Error: ${TAP_DIR}/Formula has uncommitted changes; commit or discard them first." >&2
+  exit 1
+fi
+
+url="https://github.com/${REPO}/releases/download/arthas-all-${latest}/arthas-bin.zip"
+tmpdir="$(mktemp -d)"
+trap 'rm -rf "${tmpdir}"' EXIT
+
+echo "==> Downloading ${url}"
+curl -fL --progress-bar -o "${tmpdir}/arthas-bin.zip" "${url}"
+sha="$(shasum -a 256 "${tmpdir}/arthas-bin.zip" | cut -d' ' -f1)"
+echo "==> sha256 ${sha}"
+
+sed -i '' \
+  -e "s|/arthas-all-${current}/|/arthas-all-${latest}/|" \
+  -e "s|^  version \".*\"$|  version \"${latest}\"|" \
+  -e "s|^  sha256 \".*\"$|  sha256 \"${sha}\"|" \
+  "${FORMULA_FILE}"
+
+if ! grep -q "arthas-all-${latest}/arthas-bin.zip" "${FORMULA_FILE}"; then
+  echo "Error: failed to rewrite ${FORMULA_FILE}; reverting." >&2
+  git -C "${TAP_DIR}" checkout -- Formula/arthas.rb
+  exit 1
+fi
+
+git -C "${TAP_DIR}" add Formula/arthas.rb
+git -C "${TAP_DIR}" commit -q -m "arthas ${latest}"
+echo "==> Committed formula bump ${current} -> ${latest}"
+
+brew upgrade "${FORMULA}"
