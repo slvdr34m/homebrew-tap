@@ -2,7 +2,6 @@ class Arthas < Formula
   desc "Java diagnostic tool for troubleshooting production JVMs"
   homepage "https://arthas.aliyun.com/"
   url "https://github.com/alibaba/arthas/releases/download/arthas-all-4.3.5/arthas-bin.zip"
-  version "4.3.5"
   sha256 "f4ea8e4ab4bb20a9925c21780bfb91331e73968eae881fd89b855cccaad21f1c"
   license "Apache-2.0"
 

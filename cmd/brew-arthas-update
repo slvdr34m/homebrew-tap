@@ -1,20 +1,20 @@
 #!/bin/bash
 # brew arthas-update [--check]
 #
-# Bump chenqinghe/tap/arthas to the newest upstream release (alibaba/arthas
+# Bump slvdr34m/tap/arthas to the newest upstream release (alibaba/arthas
 # GitHub releases) and upgrade the installed keg.
 #   --check   only report whether a newer release exists
 set -euo pipefail
 
-TAP_DIR="$(brew --repository chenqinghe/tap)"
+TAP_DIR="$(brew --repository slvdr34m/tap)"
 FORMULA_FILE="${TAP_DIR}/Formula/arthas.rb"
-FORMULA="chenqinghe/tap/arthas"
+FORMULA="slvdr34m/tap/arthas"
 REPO="alibaba/arthas"
 
 check_only=false
 [[ "${1:-}" == "--check" ]] && check_only=true
 
-current="$(sed -n 's/^  version "\(.*\)"$/\1/p' "${FORMULA_FILE}")"
+current="$(sed -n 's|.*/arthas-all-\([0-9][0-9.]*\)/arthas-bin\.zip.*|\1|p' "${FORMULA_FILE}")"
 latest="$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" \
   | sed -n 's/.*"tag_name": *"arthas-all-\([0-9][0-9.]*\)".*/\1/p' | head -1)"
 
@@ -52,7 +52,6 @@ echo "==> sha256 ${sha}"
 
 sed -i '' \
   -e "s|/arthas-all-${current}/|/arthas-all-${latest}/|" \
-  -e "s|^  version \".*\"$|  version \"${latest}\"|" \
   -e "s|^  sha256 \".*\"$|  sha256 \"${sha}\"|" \
   "${FORMULA_FILE}"
 

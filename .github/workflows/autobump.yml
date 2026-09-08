@@ -1,41 +1,54 @@
-# brew tap-new uses this file to generate an autobump workflow for the new tap
-name: brew bump
+# Track upstream alibaba/arthas releases and commit the bumped formula
+# straight to main, so a plain `brew update && brew upgrade` picks it up.
+name: autobump
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - .github/workflows/autobump.yml
   schedule:
-    # Every day at 7:45 UTC
+    # Every day at 07:45 UTC
     - cron: 45 7 * * *
+  workflow_dispatch:
 
-permissions: {}
+permissions:
+  contents: read
 
 defaults:
   run:
     shell: bash -xeuo pipefail {0}
 
 jobs:
-  autobump:
+  arthas:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      pull-requests: write
     steps:
-      - name: Set up Homebrew
-        id: set-up-homebrew
-        uses: Homebrew/actions/setup-homebrew@3cdb78d0f62ad29dd32de765782654f4eedea607 # 2026.08.31.1
+      - name: Check out tap
+        uses: actions/checkout@v5
 
-      - name: Set up git
-        id: git_setup
-        uses: Homebrew/actions/git-user-config@3cdb78d0f62ad29dd32de765782654f4eedea607 # 2026.08.31.1
-
-      - name: Bump formulae
+      - name: Bump arthas to the newest upstream release
         env:
-          HOMEBREW_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          HOMEBREW_GIT_COMMITTER_NAME: ${{ steps.git_setup.outputs.name }}
-          HOMEBREW_GIT_COMMITTER_EMAIL: ${{ steps.git_setup.outputs.email }}
-          TAP_NAME: ${{ steps.set-up-homebrew.outputs.tap-name }}
-        run: brew bump --no-fork --open-pr --formulae --bump-synced --tap="$TAP_NAME"
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          formula=Formula/arthas.rb
+          current="$(sed -n 's|.*/arthas-all-\([0-9][0-9.]*\)/arthas-bin\.zip.*|\1|p' "$formula")"
+          latest="$(gh api repos/alibaba/arthas/releases/latest --jq .tag_name | sed 's/^arthas-all-//')"
+          echo "formula=${current} upstream=${latest}"
+
+          if [[ "${current}" == "${latest}" ]]; then
+            echo "arthas is already at the newest upstream release."
+            exit 0
+          fi
+
+          url="https://github.com/alibaba/arthas/releases/download/arthas-all-${latest}/arthas-bin.zip"
+          curl -fsSL -o /tmp/arthas-bin.zip "$url"
+          sha="$(sha256sum /tmp/arthas-bin.zip | cut -d' ' -f1)"
+
+          sed -i \
+            -e "s|/arthas-all-${current}/|/arthas-all-${latest}/|" \
+            -e "s|^  sha256 \".*\"$|  sha256 \"${sha}\"|" \
+            "$formula"
+          grep -q "arthas-all-${latest}/arthas-bin.zip" "$formula"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -qam "arthas ${latest}"
+          git push
